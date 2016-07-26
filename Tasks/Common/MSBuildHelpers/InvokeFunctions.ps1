@@ -240,25 +240,23 @@ function Invoke-MSBuild {
 
         $detailResult = 'Succeeded'
         try {
-            if ($NoTimelineLogger) {
-                Invoke-VstsTool -FileName $MSBuildPath -Arguments $arguments -RequireExitCodeZero
-            } else {
-                $knownDetailNodes = @{ }
-                Invoke-VstsTool -FileName $MSBuildPath -Arguments $arguments -RequireExitCodeZero |
-                    ForEach-Object {
-                        if ($_ -and
-                            $_.IndexOf($script:loggingCommandPrefix) -ge 0 -and
-                            ($command = ConvertFrom-SerializedLoggingCommand -Message $_)) {
-                            if ($command.Area -eq 'task' -and
-                                $command.Event -eq 'logissue' -and
-                                $command.Properties['type'] -eq 'error') {
+            $knownDetailNodes = @{ }
+            Invoke-VstsTool -FileName $MSBuildPath -Arguments $arguments -RequireExitCodeZero |
+                ForEach-Object {
+                    if ($_ -and
+                        $_.IndexOf($script:loggingCommandPrefix) -ge 0 -and
+                        ($command = ConvertFrom-SerializedLoggingCommand -Message $_)) {
+                        if ($command.Area -eq 'task' -and
+                            $command.Event -eq 'logissue' -and
+                            $command.Properties['type'] -eq 'error') {
 
-                                # An error issue was detected. Set the result to Failed for the logdetail completed event.
-                                $detailResult = 'Failed'
-                            } elseif ($command.Area -eq 'task' -and
-                                $command.Event -eq 'logdetail' -and
-                                !$NoTimelineLogger) {
+                            # An error issue was detected. Set the result to Failed for the logdetail completed event.
+                            $detailResult = 'Failed'
+                        } elseif ($command.Area -eq 'task' -and
+                            $command.Event -eq 'logdetail') {
 
+                            # Check whether to drop detail timeline records.
+                            if (!$NoTimelineLogger) {
                                 # Record known detail nodes and manipulate the parent project ID if required.
                                 $id = $command.Properties['id']
                                 if (!$knownDetailNodes.ContainsKey($id)) {
@@ -291,13 +289,13 @@ function Invoke-MSBuild {
                                     $command.Properties['name'] = $projFile
                                 }
                             }
-
-                            Write-LoggingCommand -Command $command -AsOutput
-                        } else {
-                            $_
                         }
+
+                        Write-LoggingCommand -Command $command -AsOutput
+                    } else {
+                        $_
                     }
-            }
+                }
 
             if ($LASTEXITCODE -ne 0) {
                 Write-VstsSetResult -Result Failed -DoNotThrow
